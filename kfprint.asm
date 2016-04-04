@@ -13,12 +13,131 @@ argc				db 0d
 argptrs				dw ARGNUM dup(?)
 arglens				db ARGNUM dup(?)
 
+;Storage API;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;
+;LD_STO_SEG	(SEG_REG)
+;LD_STO (SEG_REG, REG)
+;
+;IS_STO_FULL (REG)
+;
+;ARGCX (SEG_REG)
+;
+;ARGP (INDEX, REG)
+;ARG (SEG_REG, INDEX, REG)
+;ARGV (SEG_REG, INDEX, REG)
+;
+;ARGLENP (INDEX, REG)
+;ARGLEN (SEG_REG, INDEX, REG)
+;
+;COPY_ARG (SEG_SRC, INDEX, SEG_DEST, OFFSET_DEST)
+;
+
+LD_STO_SEG macro SEG_REG				;moves storage segment to SEG_REG
+	push ax
+
+	mov ax,seg storage
+	mov SEG_REG,ax
+
+	pop ax
+endm
+
+LD_STO macro SEG_REG, REG				;moves storage segment to SEG_REG and offset to REG
+	LD_STO_SEG SEG_REG
+	mov REG,offset storage
+endm
+
+IS_STO_FULL macro REG					;checks whether pointer REG is after the last byto of storage data; jae = true / jb = false
+	cmp REG,offset argc
+endm
+
+ARGCX macro	SEG_REG						;moves number of arguments in storage to cx, SEG_REG must be initialized with storage's segment
+	mov cl,SEG_REG:[argc]
+	xor ch,ch
+endm
+
+ARGP macro INDEX, REG					;returns in REG pointer to near pointer to argument with index INDEX, indices begin from 0
+	xor REG,REG
+
+	mov REG,INDEX
+	sal REG,1d
+
+	add REG,offset argc + 1d
+endm
+
+ARG macro SEG_REG, INDEX, REG			;returns in REG near pointer to argument with index INDEX, indices begin from 0
+	push bx								;REG cannot be bx, SEG_REG must be initialized with storage's segment
+
+	ARGP INDEX, REG
+
+	mov bx,REG
+	mov REG,SEG_REG:[bx]
+
+	pop bx
+endm
+
+ARGV macro SEG_REG, INDEX, REG			;returns in REG first word of argument with index INDEX, indices begin from 0
+	push bx								;REG cannot be bx, SEG_REG must be initialized with storage's segment
+
+	ARGP INDEX, REG
+
+	mov bx,REG
+	mov bx,SEG_REG:[bx]					;get pointer to argument
+
+	mov bx,SEG_REG:[bx]					;get first word of argument
+	mov REG,bx
+
+	pop bx
+endm
+
+ARGLENP macro INDEX, REG				;returns in REG pointer to size of argument INDEX, indices start from 0
+	xor REG,REG
+	mov REG,INDEX
+	add REG,offset arglens
+endm
+
+ARGLEN macro SEG_REG, INDEX, REG		;returns in REG size of argument INDEX, indices start from 0
+	push bx								;REG cannot be bx, SEG_REG must be initialized with storage's segment
+
+	ARGLENP INDEX, REG
+
+	mov bx,REG
+	mov REG,SEG_REG:[bx]
+	and REG,00ffh
+
+	pop bx
+endm
+
+;COPY_ARG
+;Copies argument with index INDEX from storage in segment SEG_SRC to SEG_DEST:OFFSET_DEST
+;
+COPY_ARG macro SEG_SRC, INDEX, SEG_DEST, OFFSET_DEST
+	push ax
+	push si
+	push di
+	push ds
+	push es
+
+	LD_STO_SEG ds
+	ARG SEG_SRC, INDEX, si
+
+	mov ax,SEG_DEST
+	mov es,ax
+	mov di,OFFSET_DEST
+
+	ARGLEN ds, INDEX, cx
+
+	rep movsb
+	
+	pop es
+	pop ds
+	pop di
+	pop si
+	pop ax
+endm
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 str_overflow		db 'error: arguments too long',13d,10d,13d,10d,'$'
-
-str_usage			db 'usage: kfprint [MOD_FLAG] KEY',13d,10d
-					db 'MOD_FLAG = 0|1, default: 0',13d,10d
-					db 'KEY = [0-9a-f]{32}',13d,10d,'$'
 
 str_arg_count		db 'error: invalid number of arguments',13d,10d,13d,10d,'$'
 str_flag_length		db 'error: invalid flag length',13d,10d,13d,10d,'$'
@@ -26,6 +145,10 @@ str_flag_value		db 'error: invalid flag value',13d,10d,13d,10d,'$'
 str_key_short		db 'error: key is too short',13d,10d,13d,10d,'$'
 str_key_long		db 'error: key is too long',13d,10d,13d,10d,'$'
 str_key_value		db 'error: invalid key value',13d,10d,13d,10d,'$'
+
+str_usage			db 'usage: kfprint [MOD_FLAG] KEY',13d,10d
+					db 'MOD_FLAG = 0|1, default: 0',13d,10d
+					db 'KEY = [0-9a-f]{32}',13d,10d,'$'
 
 
 DEFAULT_FLAG		= 0d
@@ -35,7 +158,6 @@ flag				db DEFAULT_FLAG
 key					db KEY_LENGTH dup(?)
 
 bit_key				db (KEY_LENGTH / 2d) dup(?)
-
 
 KFPRINT_HEIGHT 		= 9d
 KFPRINT_WIDTH 		= 17d
@@ -55,158 +177,12 @@ BORDER_CHAR_VERTICAL		= '|'
 
 border_horizontal	db BORDER_CHAR_CORNER, KFPRINT_WIDTH dup(BORDER_CHAR_HORIZONTAL), BORDER_CHAR_CORNER, 13d, 10d, '$'
 
-
 FREQ_MAX			= 14d
 freqmap				db ' .o+=*BOX@%&#/^'
 START_CHAR			= 'S'
 END_CHAR			= 'E'
 
 data ends
-
-
-;Storage API;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;
-;LD_STO_SEG	(SEG_REG)
-;LD_STO (SEG_REG, REG)
-;
-;IS_STO_FULL (REG)
-;
-;ARGCX
-;
-;ARGP (INDEX, REG)
-;ARG (INDEX, REG)
-;ARGV (INDEX, REG)
-;
-;ARGLENP (INDEX, REG)
-;ARGLEN (INDEX, REG)
-;
-;COPY_ARG (SEG_SRC, INDEX, SEG_DEST, OFFSET_DEST)
-;
-
-LD_STO_SEG macro SEG_REG				;moves storage segment to SEG_REG
-	push ax
-
-	mov ax,seg storage
-	mov SEG_REG,ax
-
-	pop ax
-endm
-
-LD_STO macro SEG_REG, REG				;moves storage segment to SEG_REG and offset to REG
-	LD_STO_SEG SEG_REG
-	mov REG,offset storage
-endm
-
-IS_STO_FULL macro REG					;checks whether pointer REG is after the last byte of storage data; jae = true / jb = false
-	cmp REG,offset argc
-endm
-
-ARGCX macro								;moves number of arguments in storage to cx
-	push ds
-
-	LD_STO_SEG ds
-
-	mov cl,ds:[argc]
-	xor ch,ch
-
-	pop ds
-endm
-
-ARGP macro INDEX, REG					;returns in REG pointer to near pointer to argument with index INDEX, indices begin from 0
-	xor REG,REG
-
-	mov REG,INDEX
-	sal REG,1d
-
-	add REG,offset argc + 1d
-endm
-
-ARG macro INDEX, REG					;returns in REG near pointer to argument with index INDEX, indices begin from 0
-	push bx								;REG cannot be bx
-	push ds
-
-	LD_STO_SEG ds
-
-	ARGP INDEX, REG
-
-	mov bx,REG
-	mov REG,ds:[bx]
-
-	pop ds
-	pop bx
-endm
-
-ARGV macro INDEX, REG					;returns in REG first word of argument with index INDEX, indices begin from 0
-	push bx								;REG cannot be bx
-	push ds
-
-	LD_STO_SEG ds
-
-	ARGP INDEX, REG
-
-	mov bx,REG
-	mov bx,ds:[bx]						;get pointer to argument
-
-	mov bx,ds:[bx]						;get first word of argument
-	mov REG,bx
-
-	pop ds
-	pop bx
-endm
-
-ARGLENP macro INDEX, REG				;returns in REG pointer to size of argument INDEX, indices start from 0
-	xor REG,REG
-	mov REG,INDEX
-	add REG,offset arglens
-endm
-
-ARGLEN macro INDEX, REG					;returns in REG size of argument INDEX, indices start from 0
-	push bx								;REG cannot be bx
-	push ds
-
-	LD_STO_SEG ds
-
-	ARGLENP INDEX, REG
-
-	mov bx,REG
-	mov REG,ds:[bx]
-	and REG,00ffh
-
-	pop ds
-	pop bx
-endm
-
-;COPY_ARG
-;Copies argument with index INDEX from storage to SEG_DEST:OFFSET_DEST
-;
-COPY_ARG macro INDEX, SEG_DEST, OFFSET_DEST
-	push ax
-	push si
-	push di
-	push ds
-	push es
-
-	LD_STO_SEG ds
-	ARG INDEX, si
-
-	mov ax,SEG_DEST
-	mov es,ax
-	mov di,OFFSET_DEST
-
-	ARGLEN INDEX, cx
-
-	rep movsb
-	
-	pop es
-	pop ds
-	pop di
-	pop si
-	pop ax
-endm
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-code segment
 
 ;LSTR
 ;Load address of string NAME to ds:dx
@@ -222,7 +198,6 @@ LSTR macro NAME
 
 	pop ax
 endm
-
 
 ;ENDL
 ;Prints cr lf.
@@ -241,6 +216,259 @@ ENDL macro
 endm
 
 
+code segment
+
+debug macro CHAR
+	push ax
+	push dx
+
+	mov ah,02h
+	mov dl,CHAR
+	int 21h
+
+	mov ah,00h
+	int 16h
+
+	pop dx
+	pop ax
+endm
+
+
+PRINT_NUMBER macro NUMBER
+	push ax
+	push bx
+
+	mov al,NUMBER
+	mov bl,10d
+	call $print_number
+
+	pop bx
+	pop ax
+endm
+
+PRINT_NUMBER_RADIX macro NUMBER, RADIX
+	push ax
+	push bx
+
+	mov al,NUMBER
+	mov bl,RADIX
+	call $print_number
+
+	pop bx
+	pop ax
+endm
+
+$print_number proc	;al: (un)signed number to print, bl: 0 < radix <= 10
+	push ax
+	push cx
+	push dx
+
+	xor	ah,ah		;unsigned	clear ah; ax = al
+	;cbw			;signed		clear ah; ax = al
+	xor cx,cx		;cx = 0; digit count
+
+comment #			;uncomment if signed
+	cmp ax,0d		;is negative?
+jge char
+print_minus:
+	push ax			;preserve the number through int21h call
+
+	mov dl,'-'		;print minus
+	mov ah,02h
+	int 21h
+
+	pop ax			;get the number back
+	neg ax			;continue with non-negative number
+#
+char:
+	div bl			;divide by radix, ah = ax % bl, al = ax / bl
+
+	add ah,'0'		;convert remainder digit into ascii char
+	push ax			;save remainder digit char on the stack
+	inc cx			;increment digit count
+
+	xor ah,ah		;ah = 0, ax = al
+	test ax,ax		;check whether number is zero
+jnz char
+
+print_char:
+	pop dx			;get digit
+	
+	mov dl,dh		;move digit from dh into dl before printing
+	mov ah,02h		;print char from dl
+	int 21h
+loop print_char		;decrement digit count cx and check if it's zero
+
+	pop dx
+	pop cx
+	pop ax
+	ret
+$print_number endp
+
+
+debug_storage proc
+	push ax
+	push bx
+	push cx
+	push dx
+	push ds
+
+	LD_STO_SEG ds
+
+	PRINT_NUMBER byte ptr ds:[argc]
+	ENDL
+
+	mov dx,offset storage
+	mov ah,09h
+	int 21h
+	ENDL
+	ENDL
+
+	xor bx,bx
+	ARGCX ds
+lp:
+	ARGLEN ds, bx, dx
+	push bx
+	PRINT_NUMBER dl
+	pop bx
+	ENDL
+
+	ARG ds, bx, dx
+
+	mov ah,09h
+	int 21h
+	ENDL
+
+	inc bx
+	loop lp
+
+	ENDL
+
+	pop ds
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+ret
+debug_storage endp
+
+
+print_storage_args proc
+	push ax
+	push bx
+	push cx
+	push dx
+	push ds
+
+	LD_STO ds, bx
+
+	ARGCX ds
+
+	mov ah,02h
+print_loop:
+	mov dl,ds:[bx]
+	inc bx
+
+	cmp dl,00h
+	jne no_new_line
+
+	ENDL
+
+	dec cx
+
+	jcxz end_print
+	jmp print_loop
+
+no_new_line:
+	int 21h
+
+	jcxz end_print
+	jmp print_loop
+
+end_print:
+	pop ds
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+	ret
+print_storage_args endp
+
+
+print_raw_args proc
+	push ax
+	push bx
+	push cx
+	push dx
+	push ds
+
+	mov ax,seg flag
+	mov ds,ax
+
+	mov ah,02h
+	mov dl,ds:[flag]
+	int 21h
+	ENDL
+
+	mov ah,02h
+	mov bx,offset key
+	mov cx,KEY_LENGTH
+print_char:
+	mov dl,ds:[bx]
+	int 21h
+	inc bx
+	loop print_char
+
+	ENDL
+
+	pop ds
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+	ret
+print_raw_args endp
+
+
+print_bit_key proc
+	push ax
+	push bx
+	push cx
+	push dx
+	push ds
+
+	mov ax,seg bit_key
+	mov ds,ax
+
+	mov ah,02h
+	mov bx,offset bit_key
+	mov cx,KEY_LENGTH / 2d
+print_char:
+	PRINT_NUMBER_RADIX ds:[bx], 2d
+	inc bx
+	mov dl,' '
+	int 21h
+	loop print_char
+
+	ENDL
+
+	pop ds
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+	ret
+print_bit_key endp
+
+
+
+
+
+
+
+
+
+
 ;error_exit
 ;If bx isn't 0d, prints $-terminated error string at ds:[dx].
 ;Exits program with return code set in al.
@@ -255,9 +483,9 @@ ERROR_EXIT macro RET
 	call $error_exit
 endm
 
-ERROR_EXIT_STR macro RET, STR
+ERROR_STR_EXIT macro RET, FLAG, STR
 	mov al,RET
-	mov bx,1d
+	mov bx,FLAG
 	LSTR STR
 
 	call $error_exit
@@ -361,7 +589,7 @@ get_char:
 	jae error_overflow
 
 	stosb						;move char from al to storage
-	inc dx						;increment length
+	inc dx
 
 	jmp get_char
 
@@ -391,7 +619,7 @@ end_arg:
 	ret
 
 error_overflow:
-	ERROR_EXIT_STR -1d, str_overflow	;print error and exit if overflow
+	ERROR_STR_EXIT -1d, 1d, str_overflow	;print error and exit if overflow
 copy_arg_to_storage endp
 
 
@@ -439,12 +667,12 @@ parse_args endp
 verify_flag proc
 	push ax
 
-	ARGLEN dx, ax				;get length of argument with index dx to ax
+	ARGLEN ds, dx, ax			;get length of argument with index dx to ax
 
 	cmp ax,1d					;verify flag length
 	jne error_flag_length
 
-	ARGV dx, ax					;get first word of argument with index dx to ax
+	ARGV ds, dx, ax				;get first word of argument with index dx to ax
 
 	cmp	al,'0'					;check if flag is "0"
 	je flag_ok
@@ -452,16 +680,16 @@ verify_flag proc
 	cmp al,'1'					;check if flag is "1"
 	je flag_ok
 
-	ERROR_EXIT_STR -4d, str_flag_value	;else: invalid flag value
+	ERROR_STR_EXIT -3d, 1d, str_flag_value	;else: invalid flag value
 
 flag_ok:
-	COPY_ARG dx, seg flag, offset flag	;copy flag from parser storage to dedicated flag variable
+	COPY_ARG ds, dx, seg flag, offset flag	;copy flag from parser storage to dedicated flag variable
 		
 	pop ax
 	ret
 
 error_flag_length:
-	ERROR_EXIT_STR -3d, str_flag_length
+	ERROR_STR_EXIT -2d, 1d, str_flag_length
 verify_flag endp
 
 
@@ -470,13 +698,13 @@ verify_key proc
 	push cx
 	push si
 
-	ARGLEN dx, cx				;get length of argument with index dx to cx
+	ARGLEN ds, dx, cx			;get length of argument with index dx to cx
 
 	cmp cx,KEY_LENGTH
 	jb error_key_short
 	ja error_key_long
 
-	ARG dx, si					;point si at argument with index dx
+	ARG ds, dx, si				;point si at argument with index dx
 
 get_char:
 	lodsb
@@ -501,7 +729,7 @@ not_decimal_digit:
 	loop get_char
 
 key_ok:
-	COPY_ARG dx, seg key, offset key	;copy key from parser storage to dedicated key variable
+	COPY_ARG ds, dx, seg key, offset key	;copy key from parser storage to dedicated key variable
 
 	pop si
 	pop cx
@@ -509,13 +737,13 @@ key_ok:
 	ret
 
 error_key_short:
-	ERROR_EXIT_STR -5d, str_key_short
+	ERROR_STR_EXIT -4d, 1d, str_key_short
 
 error_key_long:
-	ERROR_EXIT_STR -6d, str_key_long
+	ERROR_STR_EXIT -5d, 1d, str_key_long
 
 error_key_value:
-	ERROR_EXIT_STR -7d, str_key_value
+	ERROR_STR_EXIT -6d, 1d, str_key_value
 verify_key endp
 
 
@@ -539,7 +767,7 @@ verify_args proc
 	cmp al,2d					;two args?
 	je check_flag				;verify flag first
 
-	ERROR_EXIT_STR -2d, str_arg_count	;else: invalid number of arguments
+	ERROR_STR_EXIT -1d, 1d, str_arg_count	;else: invalid number of arguments
 
 check_flag:
 	call verify_flag
@@ -746,6 +974,7 @@ end_move:
 perform_mod_move endp
 
 
+;wrk
 move_bishop proc
 	push ax
 	push bx
@@ -896,10 +1125,19 @@ main:
 	mov sp,offset top
 
 	call parse_args
-	
+
+	;debug
+	;call print_storage_args
+
 	call verify_args
-	
+
+	;debug
+	;call print_raw_args
+
 	call conv_key_to_bits
+
+	;debug
+	;call print_bit_key
 
 	call move_bishop
 
@@ -910,6 +1148,7 @@ main:
 	mov ax,4c00h				;return 0
 	int 21h
 code ends
+
 
 
 stack segment stack
