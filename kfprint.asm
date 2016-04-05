@@ -20,12 +20,12 @@ str_usage			db 'usage: kfprint [MOD_FLAG] KEY',13d,10d
 					db 'MOD_FLAG = 0|1, default: 0',13d,10d
 					db 'KEY = [0-9a-f]{32}',13d,10d,'$'
 
-str_arg_count		db 'error: invalid number of arguments',13d,10d,13d,10d,'$'
-str_flag_length		db 'error: invalid flag length',13d,10d,13d,10d,'$'
-str_flag_value		db 'error: invalid flag value',13d,10d,13d,10d,'$'
-str_key_short		db 'error: key is too short',13d,10d,13d,10d,'$'
-str_key_long		db 'error: key is too long',13d,10d,13d,10d,'$'
-str_key_value		db 'error: invalid key value',13d,10d,13d,10d,'$'
+err_arg_count		db 'error: invalid number of arguments',13d,10d,13d,10d,'$'
+err_flag_length		db 'error: invalid flag length',13d,10d,13d,10d,'$'
+err_flag_value		db 'error: invalid flag value',13d,10d,13d,10d,'$'
+err_key_short		db 'error: key is too short',13d,10d,13d,10d,'$'
+err_key_long		db 'error: key is too long',13d,10d,13d,10d,'$'
+err_key_value		db 'error: invalid key value',13d,10d,13d,10d,'$'
 
 
 DEFAULT_FLAG		= 0d
@@ -64,7 +64,7 @@ END_CHAR			= 'E'
 data ends
 
 
-;Storage API;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;Storage API;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;
 ;LD_STO_SEG	(SEG_REG)
 ;LD_STO (SEG_REG, REG)
@@ -207,7 +207,7 @@ endm
 
 
 code segment
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;LSTR
 ;Load address of string NAME to ds:dx
 ;
@@ -281,7 +281,7 @@ print_str_usage:
 	mov ah,4ch
 	int 21h
 $error_exit endp
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;eat_whitespace
 ;Returns position of the first non-whitespace char in the string
@@ -452,7 +452,7 @@ verify_flag proc
 	cmp al,'1'					;check if flag is "1"
 	je flag_ok
 
-	ERROR_EXIT_STR -4d, str_flag_value	;else: invalid flag value
+	ERROR_EXIT_STR -4d, err_flag_value	;else: invalid flag value
 
 flag_ok:
 	COPY_ARG dx, seg flag, offset flag	;copy flag from parser storage to dedicated flag variable
@@ -461,7 +461,7 @@ flag_ok:
 	ret
 
 error_flag_length:
-	ERROR_EXIT_STR -3d, str_flag_length
+	ERROR_EXIT_STR -3d, err_flag_length
 verify_flag endp
 
 
@@ -509,13 +509,13 @@ key_ok:
 	ret
 
 error_key_short:
-	ERROR_EXIT_STR -5d, str_key_short
+	ERROR_EXIT_STR -5d, err_key_short
 
 error_key_long:
-	ERROR_EXIT_STR -6d, str_key_long
+	ERROR_EXIT_STR -6d, err_key_long
 
 error_key_value:
-	ERROR_EXIT_STR -7d, str_key_value
+	ERROR_EXIT_STR -7d, err_key_value
 verify_key endp
 
 
@@ -539,7 +539,7 @@ verify_args proc
 	cmp al,2d					;two args?
 	je check_flag				;verify flag first
 
-	ERROR_EXIT_STR -2d, str_arg_count	;else: invalid number of arguments
+	ERROR_EXIT_STR -2d, err_arg_count	;else: invalid number of arguments
 
 check_flag:
 	call verify_flag
