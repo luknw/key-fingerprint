@@ -29,7 +29,7 @@ err_key_value		db 'error: invalid key value',13d,10d,13d,10d,'$'
 
 
 DEFAULT_FLAG		= 0d
-KEY_LENGTH			= 32d
+KEY_LENGTH			= 32d	;must be even
 
 flag				db DEFAULT_FLAG
 key					db KEY_LENGTH dup(?)
@@ -43,7 +43,7 @@ KFPRINT_WIDTH 		= 17d
 kfprint				db KFPRINT_HEIGHT dup( KFPRINT_WIDTH dup(0d) )
 
 
-DEFAULT_START_OFFSET	= KFPRINT_HEIGHT * KFPRINT_WIDTH / 2d
+DEFAULT_START_OFFSET = KFPRINT_HEIGHT * KFPRINT_WIDTH / 2d
 
 start_offset		db DEFAULT_START_OFFSET		;positions indexed from 0
 end_offset			db 0d
@@ -57,7 +57,9 @@ border_horizontal	db BORDER_CHAR_CORNER, KFPRINT_WIDTH dup(BORDER_CHAR_HORIZONTA
 
 
 FREQ_MAX			= 14d
+
 freqmap				db ' .o+=*BOX@%&#/^'
+
 START_CHAR			= 'S'
 END_CHAR			= 'E'
 
@@ -97,7 +99,7 @@ LD_STO macro SEG_REG, REG				;moves storage segment to SEG_REG and offset to REG
 	mov REG,offset storage
 endm
 
-IS_STO_FULL macro REG					;checks whether pointer REG is after the last byte of storage data; jae = true / jb = false
+IS_STO_FULL macro REG					;checks whether pointer REG is after the last byte of storage data; use: jae <=> true / jb <=> false
 	cmp REG,offset argc
 endm
 
@@ -115,7 +117,7 @@ endm
 ARGP macro INDEX, REG					;returns in REG pointer to near pointer to argument with index INDEX, indices begin from 0
 	xor REG,REG
 
-	mov REG,INDEX
+	mov REG,INDEX						;skip pointers (2 bytes) of args before INDEX
 	sal REG,1d
 
 	add REG,offset argc + 1d
@@ -242,7 +244,8 @@ endm
 
 
 ;error_exit
-;If bx isn't 0d, prints $-terminated error string at ds:[dx].
+;If bx isn't 0d, prints $-terminated error string at ds:[dx]
+;in addition to default usage info.
 ;Exits program with return code set in al.
 ;
 ;params:	al			- return code
@@ -339,7 +342,7 @@ copy_arg_to_storage proc
 	IS_STO_FULL di				;check free space
 	jae error_overflow
 
-	ARGP word ptr es:[argc], bx	;get pointer to pointer to argument with index argc
+	ARGP word ptr es:[argc], bx	;get pointer to pointer to argument with index argc (=counter of args in storage) to bx
 	mov es:[bx],di				;save argument ptr
 
 	movsb						;move first char from source to storage
@@ -384,7 +387,7 @@ end_arg:
 	ARGLENP word ptr es:[argc], bx	;get pointer to length of argument with index argc
 	mov es:[bx],dx				;save argument length
 
-	inc es:[argc]				;increment number of arguments
+	inc es:[argc]				;increment number of arguments in storage
 
 	pop dx
 	pop bx
@@ -659,7 +662,7 @@ endm
 perform_move proc
 	OFFSET_TO_COL_ROW			;ah = column index, al = row index
 
-	test dh,dl					;check bit
+	test dh,dl					;move left?
 	jnz move_right
 
 	cmp ah,0d					;check left bound
@@ -676,7 +679,7 @@ move_right:
 vertical_bit:
 	sal dl,1d					;adjust bit mask
 
-	test dh,dl					;check bit
+	test dh,dl					;move up?
 	jnz move_down
 
 	cmp al,0d					;check top bound
